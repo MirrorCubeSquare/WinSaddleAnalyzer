@@ -1,4 +1,4 @@
-﻿using Gallop;
+using Gallop;
 using Gallop.Endpoints;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -32,6 +32,7 @@ namespace WinSaddleAnalyzer
         bool friendPublished;
         bool inheritancePublished;
         bool trainedCharactersPublished;
+        bool settingsLoaded;
         TrainedCharaLoadResponse.CommonResponse? CurrentTrainedCharaData { get; set; }
 
         static readonly JsonSerializerSettings SettingsJson = new()
@@ -42,7 +43,7 @@ namespace WinSaddleAnalyzer
 
         internal string PLUGIN_DATA_DIRECTORY = string.Empty;
         internal string DATABASE_DIRECTORY = string.Empty;
-        internal string SETTINGS_FILEPATH = string.Empty;
+        internal string SETTINGS_FILEPATH => SettingsFilePath;
         internal string TRAINED_CHARA_FILEPATH = string.Empty;
         internal string FACTOR_EFFECT_FILEPATH = string.Empty;
         internal TrainedChara[] TrainedChara = [];
@@ -58,7 +59,6 @@ namespace WinSaddleAnalyzer
             PLUGIN_DATA_DIRECTORY = DataDirectory;
             Directory.CreateDirectory(PLUGIN_DATA_DIRECTORY);
             DATABASE_DIRECTORY = Directory.GetCurrentDirectory();
-            SETTINGS_FILEPATH = SettingsFilePath;
             TRAINED_CHARA_FILEPATH = Path.Combine(PLUGIN_DATA_DIRECTORY, "trained_chara.json");
             FACTOR_EFFECT_FILEPATH = Path.Combine(DATABASE_DIRECTORY, "factor_effects.br");
             LoadSettings();
@@ -87,6 +87,8 @@ namespace WinSaddleAnalyzer
                 Environment.CurrentManagedThreadId != application.MainThreadId)
                 throw new InvalidOperationException(
                     "WinSaddleAnalyzer 无法从非 UI thread 启动配置：Terminal.Gui 当前没有正在运行的 session。");
+
+            if (!settingsLoaded) LoadSettings();
 
             var draft = new WinSaddleSettings(TrainedCharaSort, OnlyFavourites, TargetHorseId, ParentHorseId);
             WinSaddleSettings saved;
@@ -236,7 +238,11 @@ namespace WinSaddleAnalyzer
 
         void LoadSettings()
         {
-            if (!File.Exists(SETTINGS_FILEPATH)) return;
+            if (!File.Exists(SETTINGS_FILEPATH))
+            {
+                settingsLoaded = true;
+                return;
+            }
 
             WinSaddleSettings settings;
             try
@@ -262,11 +268,12 @@ namespace WinSaddleAnalyzer
             OnlyFavourites = settings.OnlyFavourites;
             TargetHorseId = settings.TargetHorseId;
             ParentHorseId = settings.ParentHorseId;
+            settingsLoaded = true;
         }
 
         void SaveSettings()
         {
-            Directory.CreateDirectory(PLUGIN_DATA_DIRECTORY);
+            Directory.CreateDirectory(DataDirectory);
             var settings = new WinSaddleSettings(
                 TrainedCharaSort,
                 OnlyFavourites,

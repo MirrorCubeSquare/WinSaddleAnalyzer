@@ -40,6 +40,7 @@ await CheckAsync("workspace publications and persistence", () => AssertWorkspace
 await CheckAsync("trained-character sorting and configuration synchronization", () => AssertTrainedCharaSortingAndConfigurationSynchronization(ui));
 Check("legacy sorting configuration fails fast", () => AssertLegacySortingConfigurationFailsFast(ui));
 Check("configuration draft save and cancel", () => AssertConfigurationDraftSemantics(ui));
+Check("configuration before initialization", () => AssertConfigurationDraftSemantics(ui, initialize: false));
 await CheckAsync("optional skill expected effects", () => AssertOptionalSkillExpectedEffects(ui));
 
 if (failures.Count != 0)
@@ -1275,7 +1276,7 @@ static void AssertLegacySortingConfigurationFailsFast(WorkspaceSmokeSession ui)
     }
 }
 
-static void AssertConfigurationDraftSemantics(WorkspaceSmokeSession ui)
+static void AssertConfigurationDraftSemantics(WorkspaceSmokeSession ui, bool initialize = true)
 {
     var originalCwd = Directory.GetCurrentDirectory();
     var workspace = Path.Combine(Path.GetTempPath(), "win-saddle-config-smoke-" + Guid.NewGuid().ToString("N"));
@@ -1285,7 +1286,7 @@ static void AssertConfigurationDraftSemantics(WorkspaceSmokeSession ui)
         Directory.SetCurrentDirectory(workspace);
         using var context = new RuntimePluginContext(ui.Application);
         var plugin = new PluginType();
-        plugin.Initialize(context);
+        if (initialize) plugin.Initialize(context);
         using var application = Terminal.Gui.App.Application.Create(new VirtualTimeProvider())
             .Init(DriverRegistry.Names.ANSI);
         application.Driver!.SetScreenSize(100, 30);
@@ -1340,6 +1341,20 @@ static void AssertConfigurationDraftSemantics(WorkspaceSmokeSession ui)
         Assert(settings.Value<int>("TargetHorseId") == 1, "Save must persist the draft TargetHorseId.");
         Assert(settings.Value<int>("ParentHorseId") == 2, "Save must persist the draft ParentHorseId.");
         Assert(settings.Value<bool>("OnlyFavourites") == false, "Save must persist the draft OnlyFavourites value.");
+
+        var reopened = new PluginType();
+        var savedBytes = File.ReadAllBytes(settingsPath);
+        OnNextConfigDialog(application, dialog =>
+        {
+            var fields = GetNumericIdFields(dialog);
+            Assert(fields[0].Text == "1" && fields[1].Text == "2",
+                "An uninitialized instance must load saved IDs before opening configuration.");
+            ClickVisible(application, "取消");
+        });
+        AssertCanceled(reopened.ConfigPromptAsync(application), "Reopened configuration must support Cancel.");
+        Assert(!reopened.OnlyFavourites && savedBytes.SequenceEqual(File.ReadAllBytes(settingsPath)),
+            "Reopening configuration must load existing settings without overwriting them.");
+        reopened.DisposeAsync().GetAwaiter().GetResult();
 
         OnNextConfigDialog(application, dialog =>
         {
